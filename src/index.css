@@ -1,0 +1,74 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#root {
+  padding: 0;
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: black;
+}
+
+body {
+  display: flex;
+  align-items: center;
+  align-content: center;
+}
+
+/* Hide scrollbar for Chrome, Safari and Opera */
+.root::-webkit-scrollbar {
+  display: none;
+}
+
+/* Hide scrollbar for IE, Edge and Firefox */
+.root {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+/* this is transform-gpu */
+.root * {
+  transform: translateZ(0);
+}
+
+@layer utilities {
+      /* Hide scrollbar for Chrome, Safari and Opera */
+      .no-scrollbar::-webkit-scrollbar {
+          display: none;
+      }
+     /* Hide scrollbar for IE, Edge and Firefox */
+      .no-scrollbar {
+          -ms-overflow-style: none;  /* IE and Edge */
+          scrollbar-width: none;  /* Firefox */
+    }
+  }
+
+@font-face {
+  font-family: "PrimaryLight";
+  src: url('./assets/Arista-Pro-Alternate-Light.woff') format('woff');
+}
+
+@font-face {
+  font-family: "PrimaryBold";
+  src: url('./assets/Arista-Pro-Alternate-Bold.woff') format('woff');
+}
+
+@font-face {
+  font-family: "PrimaryFat";
+  src: url('./assets/Arista-Pro-Alternate-Fat.woff') format('woff');
+}
+
+@font-face {
+  font-family: "PrimaryRegular";
+  src: url('./assets/Arista-Pro-Alternate-Regular.woff') format('woff');
+}
+
+@font-face {
+  font-family: "PrimarySemibold";
+  src: url('./assets/Arista-Pro-Alternate-Regular.woff') format('woff');
+}
+
