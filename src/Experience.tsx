@@ -4,7 +4,7 @@ import { useThree } from '@react-three/fiber';
 import { useEffect } from 'react';
 import Effects from './components/Effects';
 import { GenericStore } from './components/GenericStore';
-import Particles from './components/Particles';
+import ParticlesOptimized from './components/ParticlesOptimized';
 
 const Experience = () => {
   const { gl } = useThree()
@@ -36,7 +36,7 @@ const Experience = () => {
         minAzimuthAngle={orbitControlsConfig.minAzimuthAngle}
         maxDistance={orbitControlsConfig.maxDistance}
       />
-      <Particles />
+      <ParticlesOptimized />
         <Backdrop
           floor={0.25} // Stretches the floor segment, 0.25 by default
           segments={20} // Mesh-resolution, 20 by default

@@ -8,5 +8,59 @@ export default defineConfig({
     react(),
     glsl()
   ],
-  base: '/ParticleCurlShader/'
+  base: '/ParticleCurlShader/',
+  
+  // Performance optimizations
+  build: {
+    // Enable tree shaking
+    minify: 'esbuild',
+    
+    // Optimize chunk sizes
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Separate vendor libraries
+          'three': ['three'],
+          'react-three': ['@react-three/fiber', '@react-three/drei', '@react-three/postprocessing'],
+          'react-vendor': ['react', 'react-dom'],
+          'ui-libs': ['leva', '@react-spring/web', 'zustand']
+        },
+        
+        // Optimize chunk loading
+        chunkFileNames: 'assets/js/[name]-[hash].js',
+        entryFileNames: 'assets/js/[name]-[hash].js',
+        assetFileNames: 'assets/[ext]/[name]-[hash].[ext]'
+      }
+    },
+    
+    // Target modern browsers for better optimization
+    target: 'es2020',
+    
+    // Increase chunk size warning limit for 3D assets
+    chunkSizeWarningLimit: 1000
+  },
+  
+  // Optimize development experience
+  server: {
+    // Enable hot reload for shaders
+    hmr: {
+      overlay: false
+    }
+  },
+  
+  // Optimize dependencies
+  optimizeDeps: {
+    include: [
+      'react',
+      'react-dom',
+      'three',
+      '@react-three/fiber',
+      '@react-three/drei',
+      'zustand'
+    ],
+    exclude: [
+      // Exclude large libraries that don't need pre-bundling
+      'three/examples/jsm/misc/GPUComputationRenderer.js'
+    ]
+  }
 })

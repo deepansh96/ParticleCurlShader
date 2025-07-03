@@ -4,6 +4,7 @@ import { NoToneMapping, PCFSoftShadowMap, WebGLShadowMap } from "three";
 import Experience from "./Experience";
 import GenericStoreInit, { GenericStore } from "./components/GenericStore";
 import { PerformanceMeterDisplay } from "./components/PerformanceMeterDisplay";
+import PerformanceMonitor from "./components/PerformanceMonitor";
 
 
 const MainCanvas = () => {
@@ -43,6 +44,7 @@ const App = () => {
     <>
       <MainCanvas />
       <GenericStoreInit />
+      <PerformanceMonitor />
       <Leva
         oneLineLabels
         collapsed={true}// default = false, when true the GUI is collpased
