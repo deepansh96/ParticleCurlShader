@@ -1,0 +1,233 @@
+# Deploy PR to Staging Environment
+name: Deploy PR to Staging
+
+on:
+  pull_request:
+    branches: ['main']
+    types: [opened, synchronize, reopened]
+  
+  # Allow manual trigger for testing
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to deploy'
+        required: false
+        type: string
+
+# Sets permissions for the workflow
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+  pull-requests: write  # Allow commenting on PRs
+  deployments: write
+
+# Allow concurrent staging deployments but cancel in-progress ones for the same PR
+concurrency:
+  group: 'staging-${{ github.event.pull_request.number || github.event.inputs.pr_number }}'
+  cancel-in-progress: true
+
+jobs:
+  # Build and deploy to staging
+  deploy-staging:
+    environment:
+      name: staging
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Get PR number
+        id: pr
+        run: |
+          if [ "${{ github.event.pull_request.number }}" != "" ]; then
+            echo "number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+          else
+            echo "number=${{ github.event.inputs.pr_number }}" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Build for staging
+        run: npm run build
+        env:
+          # Use a different base URL for staging deployments
+          PUBLIC_URL: /ParticleCurlShader-staging/pr-${{ steps.pr.outputs.number }}
+          VITE_APP_ENV: staging
+          VITE_PR_NUMBER: ${{ steps.pr.outputs.number }}
+      
+      - name: Setup Pages for staging
+        uses: actions/configure-pages@v4
+      
+      - name: Create staging directory structure
+        run: |
+          mkdir -p staging/pr-${{ steps.pr.outputs.number }}
+          cp -r dist/* staging/pr-${{ steps.pr.outputs.number }}/
+          
+          # Create an index.html that lists all staging deployments
+          cat > staging/index.html << 'EOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+              <title>Particle Curl Shader - Staging Deployments</title>
+              <style>
+                  body { font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }
+                  .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+                  .header { text-align: center; margin-bottom: 30px; }
+                  .pr-list { list-style: none; padding: 0; }
+                  .pr-item { margin: 15px 0; padding: 15px; background: #f8f9fa; border-radius: 6px; border-left: 4px solid #007bff; }
+                  .pr-link { text-decoration: none; color: #007bff; font-weight: bold; }
+                  .pr-link:hover { text-decoration: underline; }
+                  .meta { color: #666; font-size: 0.9em; margin-top: 5px; }
+              </style>
+          </head>
+          <body>
+              <div class="container">
+                  <div class="header">
+                      <h1>🚀 Particle Curl Shader</h1>
+                      <h2>Staging Deployments</h2>
+                      <p>Preview environments for pull requests</p>
+                  </div>
+                  <ul class="pr-list">
+                      <li class="pr-item">
+                          <a href="./pr-${{ steps.pr.outputs.number }}/" class="pr-link">
+                              PR #${{ steps.pr.outputs.number }} - ${{ github.event.pull_request.title || 'Manual Deploy' }}
+                          </a>
+                          <div class="meta">
+                              Deployed: $(date)<br>
+                              Commit: ${{ github.event.pull_request.head.sha || github.sha }}
+                          </div>
+                      </li>
+                  </ul>
+                  <hr style="margin: 30px 0;">
+                  <p style="text-align: center; color: #666;">
+                      <a href="https://github.com/${{ github.repository }}" style="color: #007bff;">View Repository</a> |
+                      <a href="https://github.com/${{ github.repository }}/pulls" style="color: #007bff;">View Pull Requests</a>
+                  </p>
+              </div>
+          </body>
+          </html>
+          EOF
+      
+      - name: Upload staging artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: './staging'
+      
+      - name: Deploy to GitHub Pages (Staging)
+        id: deployment
+        uses: actions/deploy-pages@v4
+      
+      - name: Get staging URL
+        id: staging-url
+        run: |
+          base_url="${{ steps.deployment.outputs.page_url }}"
+          staging_url="${base_url%/}/pr-${{ steps.pr.outputs.number }}/"
+          echo "url=${staging_url}" >> $GITHUB_OUTPUT
+          echo "Staging URL: ${staging_url}"
+      
+      - name: Comment on PR with staging URL
+        if: github.event.pull_request.number
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            
+            const botComment = comments.find(comment => 
+              comment.user.type === 'Bot' && 
+              comment.body.includes('🚀 Staging Deployment')
+            );
+            
+            const stagingUrl = '${{ steps.staging-url.outputs.url }}';
+            const commitSha = '${{ github.event.pull_request.head.sha }}';
+            const shortSha = commitSha.substring(0, 7);
+            
+            const commentBody = `## 🚀 Staging Deployment Ready!
+            
+            Your changes have been deployed to a staging environment:
+            
+            ### 📱 Preview Links
+            - **🌐 [Live Preview](${stagingUrl})**
+            - **📊 [Performance Monitor](${stagingUrl}?showFPS=true)**
+            - **🎛️ [Debug Controls](${stagingUrl}?debugMode=true)**
+            
+            ### 📋 Deployment Details
+            - **Commit:** [\`${shortSha}\`](https://github.com/${{ github.repository }}/commit/${commitSha})
+            - **Deployed:** ${new Date().toUTCString()}
+            - **Environment:** Staging
+            - **Performance Optimizations:** ✅ Enabled
+            
+            ### 🧪 Testing Checklist
+            - [ ] Visual quality maintained
+            - [ ] Performance improvements verified
+            - [ ] Mobile compatibility tested
+            - [ ] Controls functionality confirmed
+            - [ ] No console errors
+            
+            ### 📈 Performance Testing
+            1. Open the [Performance Monitor link](${stagingUrl}?showFPS=true)
+            2. Check FPS values across different devices
+            3. Verify adaptive quality adjustments
+            4. Test mouse interactions and color changes
+            
+            ---
+            *This comment will be updated on new commits. Deployment takes ~2-3 minutes.*`;
+            
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: commentBody
+              });
+              console.log('Updated existing staging comment');
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: commentBody
+              });
+              console.log('Created new staging comment');
+            }
+      
+      - name: Create deployment status
+        if: github.event.pull_request.number
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.repos.createDeploymentStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              deployment_id: context.payload.deployment?.id || 0,
+              state: 'success',
+              environment_url: '${{ steps.staging-url.outputs.url }}',
+              description: 'Staging deployment successful'
+            });
+
+  # Cleanup old staging deployments (optional)
+  cleanup:
+    runs-on: ubuntu-latest
+    if: github.event.action == 'closed'
+    steps:
+      - name: Cleanup staging deployment
+        run: |
+          echo "PR #${{ github.event.pull_request.number }} closed"
+          echo "Staging environment can be cleaned up manually if needed"
+          # Note: Automatic cleanup would require additional setup
+          # This is a placeholder for future cleanup automation

@@ -5,6 +5,7 @@ import Experience from "./Experience";
 import GenericStoreInit, { GenericStore } from "./components/GenericStore";
 import { PerformanceMeterDisplay } from "./components/PerformanceMeterDisplay";
 import PerformanceMonitor from "./components/PerformanceMonitor";
+import URLParameterHandler from "./components/URLParameterHandler";
 
 
 const MainCanvas = () => {
@@ -44,6 +45,7 @@ const App = () => {
     <>
       <MainCanvas />
       <GenericStoreInit />
+      <URLParameterHandler />
       <PerformanceMonitor />
       <Leva
         oneLineLabels
