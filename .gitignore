@@ -1,3 +1,17 @@
+node_modules/
+dist/
+.DS_Store
+
+# Terraform
+infra/.terraform/
+infra/.terraform.lock.hcl
+infra/terraform.tfstate
+infra/terraform.tfstate.*
+infra/backend/.terraform/
+infra/backend/.terraform.lock.hcl
+infra/backend/terraform.tfstate
+infra/backend/terraform.tfstate.*
+
 # Logs
 logs
 *.log

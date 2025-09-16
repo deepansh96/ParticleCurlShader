@@ -1,0 +1,103 @@
+name: Build and Deploy to S3
+
+on:
+  push:
+    branches:
+      - '**'
+
+env:
+  AWS_REGION: ap-south-1
+  PROJECT_NAME: particle-curl-shader
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Detect infra changes
+        id: changes
+        run: |
+          PREV_SHA="${{ github.event.before }}"
+          CURR_SHA="${{ github.sha }}"
+          CHANGED=$(git diff --name-only "$PREV_SHA" "$CURR_SHA" || true)
+          if echo "$CHANGED" | grep '^infra/'; then
+            echo "infra_changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "infra_changed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Bootstrap TF backend
+        if: steps.changes.outputs.infra_changed == 'true'
+        working-directory: infra/backend
+        run: |
+          terraform init -upgrade
+          terraform apply -auto-approve
+
+      - name: Init/apply main infra
+        if: steps.changes.outputs.infra_changed == 'true'
+        working-directory: infra
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          TFSTATE_BUCKET=${PROJECT_NAME}-tfstate-${ACCOUNT_ID}
+          TF_LOCKS_TABLE=${PROJECT_NAME}-tf-locks-${ACCOUNT_ID}
+          terraform init -reconfigure \
+            -backend-config="bucket=${TFSTATE_BUCKET}" \
+            -backend-config="key=${PROJECT_NAME}/terraform.tfstate" \
+            -backend-config="region=${AWS_REGION}" \
+            -backend-config="dynamodb_table=${TF_LOCKS_TABLE}"
+          terraform apply -auto-approve
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Compute S3 bucket name
+        id: bucket
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          echo "name=${PROJECT_NAME}-${ACCOUNT_ID}" >> $GITHUB_OUTPUT
+
+      - name: Sync build to S3
+        run: |
+          aws s3 sync dist/ s3://${{ steps.bucket.outputs.name }} --delete
+
+      - name: Invalidate CloudFront cache
+        env:
+          TF_IN_AUTOMATION: true
+        run: |
+          WEBSITE_ENDPOINT=${{ steps.bucket.outputs.name }}.s3-website.${{ env.AWS_REGION }}.amazonaws.com
+          DIST_ID=$(aws cloudfront list-distributions --query "DistributionList.Items[?Origins.Items[0].DomainName=='${WEBSITE_ENDPOINT}'].Id | [0]" --output text)
+          if [ "$DIST_ID" = "None" ] || [ -z "$DIST_ID" ]; then
+            echo "No CloudFront distribution found for $WEBSITE_ENDPOINT; skipping invalidation"
+            exit 0
+          fi
+          aws cloudfront create-invalidation --distribution-id "$DIST_ID" --paths "/*"
+
+
