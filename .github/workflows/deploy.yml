@@ -51,12 +51,29 @@ jobs:
             echo "infra_changed=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Bootstrap TF backend
+      - name: Bootstrap TF backend (idempotent)
         if: steps.changes.outputs.infra_changed == 'true'
-        working-directory: infra/backend
         run: |
-          terraform init -upgrade
-          terraform apply -auto-approve
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          TFSTATE_BUCKET=${PROJECT_NAME}-tfstate-${ACCOUNT_ID}
+          TF_LOCKS_TABLE=${PROJECT_NAME}-tf-locks-${ACCOUNT_ID}
+
+          # Check existence
+          BUCKET_EXISTS=false
+          TABLE_EXISTS=false
+
+          if aws s3api head-bucket --bucket "$TFSTATE_BUCKET" 2>/dev/null; then BUCKET_EXISTS=true; fi
+          if aws dynamodb describe-table --table-name "$TF_LOCKS_TABLE" >/dev/null 2>&1; then TABLE_EXISTS=true; fi
+
+          if [ "$BUCKET_EXISTS" = true ] && [ "$TABLE_EXISTS" = true ]; then
+            echo "Backend resources already exist. Skipping bootstrap."
+          else
+            echo "Bootstrapping backend resources..."
+            pushd infra/backend >/dev/null
+            terraform init -upgrade
+            terraform apply -auto-approve
+            popd >/dev/null
+          fi
 
       - name: Init/apply main infra
         if: steps.changes.outputs.infra_changed == 'true'
